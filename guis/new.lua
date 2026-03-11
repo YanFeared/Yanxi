@@ -1,7 +1,4 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
---This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local mainapi = {
 	Categories = {},
 	GUIColor = {
@@ -197,23 +194,23 @@ local function addCloseButton(parent, offset)
 end
 
 local function addMaid(object)
-	object.Connections = {}
-	function object:Clean(callback)
-		if typeof(callback) == 'Instance' then
-			table.insert(self.Connections, {
-				Disconnect = function()
-					callback:ClearAllChildren()
-					callback:Destroy()
-				end
-			})
-		elseif type(callback) == 'function' then
-			table.insert(self.Connections, {
-				Disconnect = callback
-			})
-		else
-			table.insert(self.Connections, callback)
-		end
-	end
+    object.Connections = {}
+    function object:Clean(callback)
+        if typeof(callback) == 'Instance' then
+            table.insert(self.Connections, {
+                Disconnect = function()
+                    callback:ClearAllChildren()
+                    callback:Destroy()
+                end
+            })
+        elseif type(callback) == 'function' then
+            table.insert(self.Connections, {
+                Disconnect = callback
+            })
+        else
+            table.insert(self.Connections, callback)
+        end
+    end
 end
 
 local function addTooltip(gui, text)
@@ -497,6 +494,66 @@ mainapi.Libraries = {
 	getfontsize = getfontsize,
 	tween = tween,
 	uipallet = uipallet,
+}
+
+mainapi.ModuleTags = {
+    KitESP = {"alchemist", "beekeeper", "bigman", "ghost_catcher", "metal_detector", "sheep_herder", "sorcerer", "star_collector", "black_market_trader", "miner", "trapper", "necromancer", "battery", "metal", "eldertree", "gompy", "deathadder", "wren"},
+}
+
+mainapi.TagDisplay = {
+    KitESP = {
+        alchemist = "AlchemistESP",
+        beekeeper = "BeekeeperESP",
+        bigman = "EldertreeESP",
+        ghost_catcher = "GompyESP",
+        metal_detector = "MetalESP",
+        metal = "MetalESP",
+        sheep_herder = "SheepHerderESP",
+        sorcerer = "DeathAdderESP",
+        deathadder = "DeathAdderESP",
+        star_collector = "StarCollectorESP",
+        black_market_trader = "WrenESP",
+        wren = "WrenESP",
+        miner = "MinerESP",
+        trapper = "TrapperESP",
+        necromancer = "NecromancerESP",
+        battery = "BatteryESP",
+        eldertree = "EldertreeESP",
+        gompy = "GompyESP",
+    },
+}
+
+mainapi.ModuleAliases = {
+    Wizard = {"Zeno"},
+    Killaura = {"ka"},
+    GrandKillaura = {"grandka"},
+    ProjectileAimAssist = {"pa"},
+    Spider_Queen = {"arachne"},
+    Necromancer = {"crypt"},
+    Midnight = {"nyx"},
+    Sorcerer = {"death"},
+    Davey = {"Pirate"},
+    Battery = {"Cobalt"},
+    Defender = {"Marcel"},
+    Block_Kicker = {"terra"},
+    Dragon_Slayer = {"Kaliyah"},
+    Ice_Queen = {"Freiya"},
+    Jailor = {"Warden"},
+    Mimic = {"Milo"},
+    Pinata = {"Lucia"},
+    spirit_assassin = {"Evelyn"},
+    void_knight = {"vk"},
+    void_dragon = {"Xu'rot"},
+    cactus = {"Martin"},
+    card = {"Fortuna"},
+    black_market_trader = {"Wren"},
+    summoner = {"Kaida"},
+    bigman = {"Eldertree"},
+    spirit_summoner = {"Uma"},
+    mage = {"Whim"},
+    warlock = {"Eldric"},
+    Breaker = {"Nuker"},  
+    KitESP = {"alchemist", "beekeeper", "bigman", "ghost_catcher", "metal_detector", "sheep_herder", "sorcerer", "star_collector", "black_market_trader", "miner", "trapper", "necromancer", "battery"}
 }
 
 local components
@@ -3986,6 +4043,7 @@ function mainapi:CreateCategory(categorysettings)
 				bindtext.Text = table.concat(tab, ' + '):upper()
 				bind.Size = UDim2.fromOffset(math.max(getfontsize(bindtext.Text, bindtext.TextSize, bindtext.Font).X + 10, 20), 21)
 			end
+			pinbutton.Position = UDim2.new(1, -(bind.Size.X.Offset + 28 + 13), 0, 9)
 		end
 
 		function moduleapi:Toggle(multiple)
@@ -5057,10 +5115,53 @@ function mainapi:CreateSearch()
 		end
 		if search.Text == '' then return end
 
+		local lowerSearch = search.Text:lower()
+		local added = {}
+
 		for i, v in self.Modules do
-			if i:lower():find(search.Text:lower()) then
+			local matchType = nil
+			local matchKeyword = nil
+
+			if i:lower():find(lowerSearch) then
+				matchType = "name"
+			end
+
+			if not matchType and self.ModuleAliases and self.ModuleAliases[i] then
+				for _, alias in ipairs(self.ModuleAliases[i]) do
+					if alias:lower():find(lowerSearch) then
+						matchType = "alias"
+						matchKeyword = alias
+						break
+					end
+				end
+			end
+
+			if not matchType and self.ModuleTags and self.ModuleTags[i] then
+				for _, tag in ipairs(self.ModuleTags[i]) do
+					if tag:lower():find(lowerSearch) then
+						matchType = "tag"
+						matchKeyword = tag
+						break
+					end
+				end
+			end
+
+			if not matchType then
+				for optName, opt in pairs(v.Options) do
+					if optName:lower():find(lowerSearch) then
+						matchType = "option"
+						matchKeyword = optName
+						break
+					end
+				end
+			end
+
+			if matchType and not added[i] then
+				added[i] = true
 				local button = v.Object:Clone()
-				button.Bind:Destroy()
+				if button.Bind then button.Bind:Destroy() end
+				if button.Pin then button.Pin:Destroy() end
+
 				button.MouseButton1Click:Connect(function()
 					v:Toggle()
 				end)
@@ -5081,6 +5182,63 @@ function mainapi:CreateSearch()
 
 					frame.CanvasPosition = Vector2.new(0, (v.Object.LayoutOrder * 40) - (math.min(frame.CanvasSize.Y.Offset, 600) / 2))
 				end)
+
+				if matchType == "name" or matchType == "option" or matchType == "alias" or matchType == "tag" then
+					local displayText
+
+					if matchType == "name" then
+						if i:lower() == lowerSearch then
+							displayText = "MATCHED"
+						else
+							displayText = i:sub(1,1):upper() .. i:sub(2)
+						end
+					elseif (matchType == "tag" or matchType == "alias") and self.TagDisplay and self.TagDisplay[i] and self.TagDisplay[i][matchKeyword] then
+						displayText = self.TagDisplay[i][matchKeyword]
+					elseif matchKeyword then
+						if matchKeyword:lower() == lowerSearch then
+							displayText = "MATCHED"
+						else
+							displayText = matchKeyword:sub(1,1):upper() .. matchKeyword:sub(2)
+						end
+					else
+						displayText = "MATCHED"
+					end
+
+					local textWidth = getfontsize(displayText, 11, uipallet.FontSemiBold).X
+					local badgeWidth = math.max(50, textWidth + 12)
+
+					local badge = Instance.new('Frame')
+					badge.Name = 'SearchBadge'
+					badge.Size = UDim2.fromOffset(badgeWidth, 20) 
+					badge.Position = UDim2.new(1, -(badgeWidth + 5), 0, 10) 
+					badge.BackgroundColor3 = Color3.fromHSV(self.GUIColor.Hue, self.GUIColor.Sat, self.GUIColor.Value)
+					badge.BackgroundTransparency = 0
+					badge.BorderSizePixel = 0
+					badge.Parent = button
+
+					local badgeCorner = Instance.new('UICorner')
+					badgeCorner.CornerRadius = UDim.new(0, 4)
+					badgeCorner.Parent = badge
+
+					local badgeText = Instance.new('TextLabel')
+					badgeText.Size = UDim2.fromScale(1, 1)
+					badgeText.BackgroundTransparency = 1
+					badgeText.Text = displayText
+					badgeText.TextSize = 11
+					badgeText.FontFace = uipallet.FontSemiBold
+					badgeText.Parent = badge
+
+					local _, _, v = self.GUIColor.Hue, self.GUIColor.Sat, self.GUIColor.Value
+					if v > 0.7 then
+						badgeText.TextColor3 = Color3.new(0.1, 0.1, 0.1)
+					else
+						badgeText.TextColor3 = Color3.new(1, 1, 1)
+					end
+
+					local tooltipKeyword = matchKeyword or matchType
+					local formattedKeyword = tooltipKeyword:gsub("_", " "):gsub("(%l)(%w*)", function(a,b) return a:upper()..b end)
+					addTooltip(button, "Matched: " .. formattedKeyword)
+				end
 
 				button.Parent = children
 				task.spawn(function()
@@ -5426,6 +5584,7 @@ function mainapi:CreateLegit()
 end
 
 function mainapi:CreateNotification(title, text, duration, type)
+	if getgenv().Closet then return end
 	if not self.Notifications.Enabled then return end
 	task.delay(0, function()
 		if self.ThreadFix then
@@ -5738,7 +5897,8 @@ function mainapi:Remove(obj)
 end
 
 function mainapi:Save(newprofile)
-	if not self.Loaded then return end
+    if mainapi.ThreadFix then setthreadidentity(8) end
+    if not self.Loaded then return end
 	local guidata = {
 		Categories = {},
 		Profile = newprofile or self.Profile,
@@ -5795,8 +5955,15 @@ function mainapi:SaveOptions(object, savedoptions)
 end
 
 function mainapi:Uninject()
-	mainapi:Save()
-	mainapi.Loaded = nil
+    if getgenv().Closet and getgenv()._vape_originals then
+        for name, original in pairs(getgenv()._vape_originals) do
+            hookfunction(getgenv()[name], original)
+        end
+        getgenv()._vape_originals = nil
+    end
+    if mainapi.ThreadFix then setthreadidentity(8) end
+    mainapi:Save()
+    mainapi.Loaded = nil
 	for _, v in self.Modules do
 		if v.Enabled then
 			v:Toggle()
