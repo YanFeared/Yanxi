@@ -1,4 +1,5 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local function safeGetProto(func, index)
     if not func then return nil end
     local success, proto = pcall(debug.getconstant, func, index)
@@ -5630,10 +5631,15 @@ run(function()
 	local anims = vape.Libraries.auraanims
 	local dynamicReach = 0
 	local continueSwingTimer = 0
-	local AttackRemote = {FireServer = function() end}
+
+	local AttackRemote = {}
 	task.spawn(function()
-		AttackRemote = bedwars.Client:Get(remotes.AttackEntity).instance
+		AttackRemote = bedwars.Client:Get(remotes.AttackEntity)
 	end)
+
+	local function calculatePosition(selfpos, actualRoot)
+		return CFrame.lookAt(actualRoot.Position, selfpos).LookVector * math.max((selfpos - actualRoot.Position).Magnitude / 10, 0)
+	end
 
 	local function canHitWithCustomReg()
 		if not CustomHitReg or not CustomHitReg.Enabled then return true end
@@ -5647,6 +5653,45 @@ run(function()
 			return true
 		end
 		return false
+	end
+
+	local function OptimizedAttackData(attackTable)
+		if not AttackRemote then return end
+
+		local suc, plr = pcall(function()
+			return playersService:GetPlayerFromCharacter(attackTable.entityInstance)
+		end)
+
+		local selfpos = attackTable.validate.selfPosition.value
+		local targetpos = attackTable.validate.targetPosition.value
+		local actualDistance = (selfpos - targetpos).Magnitude
+
+		store.attackReach = (actualDistance * 100) // 1 / 100
+		store.attackReachUpdate = tick() + 1
+
+		if actualDistance > 14.4 and actualDistance <= 20 then
+			local direction = (targetpos - selfpos).Unit
+
+			local moveDistance = math.min(actualDistance - 14.4, 6)
+			attackTable.validate.selfPosition.value = selfpos + (direction * moveDistance)
+
+			local pullDistance = math.min(actualDistance - 14.4, 2)
+			attackTable.validate.targetPosition.value = targetpos - (direction * pullDistance)
+
+			attackTable.validate.raycast = attackTable.validate.raycast or {}
+			attackTable.validate.raycast.cameraPosition = attackTable.validate.raycast.cameraPosition or {}
+			attackTable.validate.raycast.cursorDirection = attackTable.validate.raycast.cursorDirection or {}
+
+			local extendedOrigin = selfpos + (direction * math.min(actualDistance - 13, 15))
+			attackTable.validate.raycast.cameraPosition.value = extendedOrigin
+			attackTable.validate.raycast.cursorDirection.value = direction
+		end
+
+		if suc and plr then
+			if not select(2, whitelist:get(plr)) then return end
+		end
+
+		return AttackRemote:SendToServer(attackTable)
 	end
 
 	local function shouldContinueSwinging()
@@ -5773,7 +5818,7 @@ run(function()
 
 					pcall(function()
 						if entitylib.isAlive and entitylib.character.HumanoidRootPart then
-							TweenService:Create(RangeCirclePart, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+							tweenService:Create(RangeCirclePart, TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
 								Position = entitylib.character.HumanoidRootPart.Position - Vector3.new(0, entitylib.character.Humanoid.HipHeight, 0)
 							}):Play()
 						end
@@ -5861,12 +5906,8 @@ run(function()
 									local angle = math.acos(math.clamp(localfacing:Dot(horizontal.Unit), -1, 1))
 									if angle <= maxAngle then
 										local dist = delta.Magnitude
-										if dist <= baseReach then
-											hasTargetInBase = true
-										end
-										if dist <= extendedReach then
-											hasTargetInExtended = true
-										end
+										if dist <= baseReach then hasTargetInBase = true end
+										if dist <= extendedReach then hasTargetInExtended = true end
 									end
 								end
 							end
@@ -5927,9 +5968,7 @@ run(function()
 									CanHit = true
 								end
 								if not CanHit then continue end
-
 								if not canHitWithCustomReg() then continue end
-
 								if SyncHits and SyncHits.Enabled then
 									local swingSpeed = (SwingTime and SwingTime.Enabled and SwingTimeSlider)
 										and SwingTimeSlider.Value
@@ -5938,19 +5977,16 @@ run(function()
 								end
 
 								if delta.Magnitude > effectiveReach then continue end
-								if Targets.Walls.Enabled then
-									local ray = Ray.new(selfpos, (v.RootPart.Position - selfpos).Unit * delta.Magnitude)
-									local hit, _ = workspace:FindPartOnRay(ray, entitylib.character)
-									if hit and not hit:IsDescendantOf(v.Character) then continue end
-								end
 
 								local actualRoot = v.Character.PrimaryPart
 								if actualRoot then
-									local dir = CFrame.lookAt(selfpos, actualRoot.Position).LookVector
+									local calc = calculatePosition(selfpos, actualRoot)
+									local dir = CFrame.lookAt(selfpos, actualRoot.Position + calc).LookVector
 									local pos = selfpos + dir * math.max(delta.Magnitude - 14.399, 0)
 
 									swingCooldown = tick()
 									bedwars.SwordController.lastAttack = workspace:GetServerTimeNow()
+									bedwars.SwordController.lastSwingServerTime = workspace:GetServerTimeNow() - tick()
 									store.attackReach = (delta.Magnitude * 100) // 1 / 100
 									store.attackReachUpdate = tick() + 1
 
@@ -5958,18 +5994,18 @@ run(function()
 										lastAttackTime = tick()
 									end
 
-									AttackRemote:FireServer({
+									OptimizedAttackData({
 										weapon = sword.tool,
-										chargedAttack = {chargeRatio = 0},
 										lastSwingServerTimeDelta = 0.5,
+										chargedAttack = {chargeRatio = 0},
 										entityInstance = v.Character,
 										validate = {
 											raycast = {
-												cameraPosition = {value = pos},
+												cameraPosition = {value = pos + Vector3.new(0, 2, 0)},
 												cursorDirection = {value = dir}
 											},
-											targetPosition = {value = actualRoot.Position},
-											selfPosition = {value = pos}
+											targetPosition = {value = actualRoot.Position + calc},
+											selfPosition = {value = pos + Vector3.new(0, 1, 0)}
 										}
 									})
 								end
@@ -6073,6 +6109,8 @@ run(function()
 		if not table.find(methods, i) then table.insert(methods, i) end
 	end
 
+	Sort = Killaura:CreateDropdown({Name = 'Target Mode', List = methods})
+
 	SwingRange = Killaura:CreateSlider({
 		Name = 'Swing range', Min = 1, Max = 40, Default = 22,
 		Suffix = function(val) return val == 1 and 'stud' or 'studs' end
@@ -6093,14 +6131,15 @@ run(function()
 	AngleSlider = Killaura:CreateSlider({Name = 'Max angle', Min = 1, Max = 360, Default = 360})
 	UpdateRate = Killaura:CreateSlider({Name = 'Update rate', Min = 1, Max = 360, Default = 60, Suffix = 'hz'})
 	MaxTargets = Killaura:CreateSlider({Name = 'Max targets', Min = 1, Max = 8, Default = 5})
-	Sort = Killaura:CreateDropdown({Name = 'Target Mode', List = methods})
 	Mouse = Killaura:CreateToggle({Name = 'Require mouse down'})
 	Swing = Killaura:CreateToggle({Name = 'No Swing'})
 	GUI = Killaura:CreateToggle({Name = 'GUI check'})
 
 	SwingTime = Killaura:CreateToggle({
 		Name = 'Custom Swing Time',
-		Function = function(callback) if SwingTimeSlider then SwingTimeSlider.Object.Visible = callback end end
+		Function = function(callback)
+			if SwingTimeSlider then SwingTimeSlider.Object.Visible = callback end
+		end
 	})
 	SwingTimeSlider = Killaura:CreateSlider({
 		Name = 'Swing Time', Min = 0, Max = 1, Default = 0.3, Decimal = 100, Visible = false
@@ -6145,6 +6184,7 @@ run(function()
 	SyncHits = Killaura:CreateToggle({
 		Name = 'Sync Hits', Tooltip = 'Waits for sword animation before attacking'
 	})
+
 	Killaura:CreateToggle({
 		Name = 'Show target',
 		Function = function(callback)
@@ -6176,6 +6216,7 @@ run(function()
 		end
 	})
 	BoxAttackColor = Killaura:CreateColorSlider({Name = 'Attack Color', Darker = true, DefaultOpacity = 0.5, Visible = false})
+
 	Killaura:CreateToggle({
 		Name = 'Target particles',
 		Function = function(callback)
@@ -6254,6 +6295,7 @@ run(function()
 		end,
 		Darker = true, Visible = false
 	})
+
 	Face = Killaura:CreateToggle({Name = 'Face target'})
 	Animation = Killaura:CreateToggle({
 		Name = 'Custom Animation',
@@ -6268,6 +6310,7 @@ run(function()
 	AnimationMode = Killaura:CreateDropdown({Name = 'Animation Mode', List = animnames, Darker = true, Visible = false})
 	AnimationSpeed = Killaura:CreateSlider({Name = 'Animation Speed', Min = 0, Max = 2, Default = 1, Decimal = 10, Darker = true, Visible = false})
 	AnimationTween = Killaura:CreateToggle({Name = 'No Tween', Darker = true, Visible = false})
+
 	Limit = Killaura:CreateToggle({
 		Name = 'Limit to items',
 		Function = function(callback)
@@ -6279,53 +6322,27 @@ run(function()
 	})
 	LegitAura = Killaura:CreateToggle({Name = 'Swing only', Tooltip = 'Only attacks while swinging manually'})
 	SophiaCheck = Killaura:CreateToggle({Name = 'Sophia Check', Tooltip = 'Stops Killaura when frozen by Sophia', Default = false})
-    SigridCheck = Killaura:CreateToggle({
-        Name = 'Sigrid Check',
-        Tooltip = 'Stops Killaura when near an elk',
-        Default = false
-    })
+	SigridCheck = Killaura:CreateToggle({
+		Name = 'Sigrid Check',
+		Tooltip = 'Stops Killaura when near an elk',
+		Default = false
+	})
 
-    task.defer(function()
-        if SwingTimeSlider and SwingTimeSlider.Object then
-            SwingTimeSlider.Object.Visible = false   
-        end
-        if ContinueSwingTime and ContinueSwingTime.Object then
-            ContinueSwingTime.Object.Visible = false 
-        end
-        if CustomHitRegSlider and CustomHitRegSlider.Object then
-            CustomHitRegSlider.Object.Visible = false 
-        end
-        if AirHitsChance and AirHitsChance.Object then
-            AirHitsChance.Object.Visible = true
-        end
-        if BoxSwingColor and BoxSwingColor.Object then
-            BoxSwingColor.Object.Visible = false
-        end
-        if BoxAttackColor and BoxAttackColor.Object then
-            BoxAttackColor.Object.Visible = false
-        end
-        if ParticleTexture and ParticleTexture.Object then
-            ParticleTexture.Object.Visible = false
-        end
-        if ParticleColor1 and ParticleColor1.Object then
-            ParticleColor1.Object.Visible = false
-        end
-        if ParticleColor2 and ParticleColor2.Object then
-            ParticleColor2.Object.Visible = false
-        end
-        if ParticleSize and ParticleSize.Object then
-            ParticleSize.Object.Visible = false
-        end
-        if AnimationMode and AnimationMode.Object then
-            AnimationMode.Object.Visible = false
-        end
-        if AnimationSpeed and AnimationSpeed.Object then
-            AnimationSpeed.Object.Visible = false
-        end
-        if AnimationTween and AnimationTween.Object then
-            AnimationTween.Object.Visible = false
-        end
-    end)
+	task.defer(function()
+		if SwingTimeSlider and SwingTimeSlider.Object then SwingTimeSlider.Object.Visible = false end
+		if ContinueSwingTime and ContinueSwingTime.Object then ContinueSwingTime.Object.Visible = false end
+		if CustomHitRegSlider and CustomHitRegSlider.Object then CustomHitRegSlider.Object.Visible = false end
+		if AirHitsChance and AirHitsChance.Object then AirHitsChance.Object.Visible = false end
+		if BoxSwingColor and BoxSwingColor.Object then BoxSwingColor.Object.Visible = false end
+		if BoxAttackColor and BoxAttackColor.Object then BoxAttackColor.Object.Visible = false end
+		if ParticleTexture and ParticleTexture.Object then ParticleTexture.Object.Visible = false end
+		if ParticleColor1 and ParticleColor1.Object then ParticleColor1.Object.Visible = false end
+		if ParticleColor2 and ParticleColor2.Object then ParticleColor2.Object.Visible = false end
+		if ParticleSize and ParticleSize.Object then ParticleSize.Object.Visible = false end
+		if AnimationMode and AnimationMode.Object then AnimationMode.Object.Visible = false end
+		if AnimationSpeed and AnimationSpeed.Object then AnimationSpeed.Object.Visible = false end
+		if AnimationTween and AnimationTween.Object then AnimationTween.Object.Visible = false end
+	end)
 end)
 
 -- granddad killaura
