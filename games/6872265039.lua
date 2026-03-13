@@ -1,5 +1,6 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local run = function(func) func() end
 local cloneref = cloneref or function(obj) return obj end
 
@@ -331,12 +332,10 @@ run(function()
 	local FLAME_IMAGE = "rbxassetid://7101948108"
 	local BedwarsImageId = require(ReplicatedStorage.TS.image["image-id"]).BedwarsImageId
 	local TITLE_STROKE_TRANSP = nil
-	local WIN_TEXT_SIZE = 19
 	local WIN_TEXT_PULL_LEFT = 14
 	local ORIGINAL_NAMETAG_SCALE = 1.17
 	local TITLE_TEXT_SIZE = 14
 	local FLAME_ASPECT_RATIO = 0.8
-	local USE_TEXT_SCALED = false
 	
 	local KnitClient
 	do
@@ -537,7 +536,7 @@ run(function()
 		layout.FillDirection = Enum.FillDirection.Horizontal
 		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 		layout.VerticalAlignment = Enum.VerticalAlignment.Center
-		layout.Padding = UDim.new(0, 4)  
+		layout.Padding = UDim.new(0, 10)  
 		layout.Parent = row
 		
 		local rank = Instance.new("ImageLabel")
@@ -577,8 +576,7 @@ run(function()
 		num.TextXAlignment = Enum.TextXAlignment.Left
 		num.TextYAlignment = Enum.TextYAlignment.Center
 		
-		num.TextScaled = USE_TEXT_SCALED
-		num.TextSize = WIN_TEXT_SIZE
+		num.TextScaled = true
 		
 		num.AnchorPoint = Vector2.new(0, 0.5)
 		num.Position = UDim2.fromScale(0.28, 0.5) 
@@ -595,15 +593,7 @@ run(function()
 		return bb
 	end
 	
-	local function forceWinTextStyle(gui)
-		local num = gui and gui:FindFirstChild("WinStreak", true)
-		if num and num:IsA("TextLabel") then
-			num.TextScaled = USE_TEXT_SCALED
-			if not USE_TEXT_SCALED then
-				num.TextSize = WIN_TEXT_SIZE
-			end
-		end
-	end
+	local function forceWinTextStyle(gui) end
 	
 	local function updateGui(gui, data)
 		if not gui then return end
@@ -650,11 +640,9 @@ run(function()
 				
 				local original = findLocalOriginalNametag(char)
 				if original then
-					scaleOriginalNametagSlightly(original)
 					hideMiddleNameAndLevel(original)
 					hideOldWinStreakOnly(original)
 					hideOldRankIconOnly(original)
-					fixRoleTextScaling(original)
 				end
 				
 				requestNametagData(function(data)
@@ -718,60 +706,6 @@ run(function()
 		Tooltip = 'Custom nametag with rank icon and winstreak (lobby only)'
 	})
 	
-	local TextScaledToggle = OGNameTags:CreateToggle({
-		Name = "Text Scaled",
-		Default = false,
-		Function = function(val)
-			USE_TEXT_SCALED = val
-			if LP.Character and OGNameTags.Enabled then
-				local head = LP.Character:FindFirstChild("Head")
-				if head then
-					local gui = head:FindFirstChild("LocalRankStreakGui")
-					if gui then
-						local num = gui:FindFirstChild("WinStreak", true)
-						if num and num:IsA("TextLabel") then
-							num.TextScaled = USE_TEXT_SCALED
-							if not USE_TEXT_SCALED then
-								num.TextSize = WIN_TEXT_SIZE
-							end
-						end
-						forceWinTextStyle(gui)
-					end
-				end
-			end
-			if TextSizeSlider and TextSizeSlider.Object then
-				TextSizeSlider.Object.Visible = not val
-			end
-		end,
-		Tooltip = 'Enable auto text scaling for winstreak number'
-	})
-	
-	local TextSizeSlider = OGNameTags:CreateSlider({
-		Name = 'Text Size',
-		Min = 10,
-		Max = 30,
-		Default = 19,
-		Function = function(val)
-			WIN_TEXT_SIZE = val
-			if LP.Character and OGNameTags.Enabled then
-				local head = LP.Character:FindFirstChild("Head")
-				if head then
-					local gui = head:FindFirstChild("LocalRankStreakGui")
-					if gui then
-						local num = gui:FindFirstChild("WinStreak", true)
-						if num and num:IsA("TextLabel") then
-							if not USE_TEXT_SCALED then
-								num.TextSize = WIN_TEXT_SIZE
-							end
-						end
-						forceWinTextStyle(gui)
-					end
-				end
-			end
-		end,
-		Tooltip = 'Manual text size for winstreak number'
-	})
-	
 	local TitleSizeSlider = OGNameTags:CreateSlider({
 		Name = 'Title Scale',
 		Min = 1.0,
@@ -789,33 +723,6 @@ run(function()
 			end
 		end,
 		Tooltip = 'Scale original nametag to make title/role bigger'
-	})
-	
-	local FlameWidthSlider = OGNameTags:CreateSlider({
-		Name = 'Flame Width',
-		Min = 0.5,
-		Max = 1.2,
-		Default = 0.8,
-		Decimal = 100,
-		Function = function(val)
-			FLAME_ASPECT_RATIO = val
-			if LP.Character and OGNameTags.Enabled then
-				local head = LP.Character:FindFirstChild("Head")
-				if head then
-					local gui = head:FindFirstChild("LocalRankStreakGui")
-					if gui then
-						local flame = gui:FindFirstChild("WinFlame", true)
-						if flame and flame:IsA("ImageLabel") then
-							local aspect = flame:FindFirstChildOfClass("UIAspectRatioConstraint")
-							if aspect then
-								aspect.AspectRatio = val
-							end
-						end
-					end
-				end
-			end
-		end,
-		Tooltip = 'Adjust flame icon width (lower = skinnier)'
 	})
 end)
 
