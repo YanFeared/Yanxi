@@ -1,6 +1,7 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 repeat task.wait() until game:IsLoaded()
 if shared.vape then shared.vape:Uninject() end
 
@@ -43,6 +44,14 @@ local cloneref = cloneref or function(obj)
 end
 local playersService = cloneref(game:GetService('Players'))
 
+local function compileTable(tab)
+    local json = '{'
+    for i, v in tab do
+        json = `{json}\n    {i} = {typeof(v) == 'string' and '"'.. v.. '"' or v},`
+    end
+    return `{json}\n}`
+end
+
 local function downloadFile(path, func)
     if not isfile(path) then
         local suc, res = pcall(function()
@@ -76,11 +85,10 @@ local function finishLoading()
             vape:Save()
             local teleportScript = [[
                 shared.vapereload = true
-                task.wait(0.5)
                 if shared.VapeDeveloper then
-                    loadstring(readfile('newvape/loader.lua'), 'loader')()
+                    loadstring(readfile('newvape/loader.lua'), 'loader')(sharedData)
                 else
-                    loadstring(game:HttpGet('https://raw.githubusercontent.com/poopparty/poopparty/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')()
+                    loadstring(game:HttpGet('https://raw.githubusercontent.com/poopparty/poopparty/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')(sharedData)
                 end
             ]]
             if shared.VapeDeveloper then
@@ -89,10 +97,15 @@ local function finishLoading()
             if shared.VapeCustomProfile then
                 teleportScript = 'shared.VapeCustomProfile = "' .. shared.VapeCustomProfile .. '"\n' .. teleportScript
             end
+            if type(args) == 'table' then
+                teleportScript = teleportScript:gsub('sharedData', compileTable(args))
+            else
+                teleportScript = teleportScript:gsub('sharedData', '{}')
+            end
             local success, err = pcall(queue_on_teleport, teleportScript)
             if not success then
                 shared.vapereload = true
-                warn('[AEROV4] queue_on_teleport failed u may need to reinject manually after teleport')
+                warn('[AEROV4] queue_on_teleport failed may need to reinject manually after teleport')
             end
         end
     end))
