@@ -28559,62 +28559,49 @@ run(function()
 end)
 
 run(function()
-    local GodMode
-    local Range
-    local TimeUp
-    local TimeDown
+    local GodMode = {Enabled = false}
+    local Range, TimeUp, Down = 16, 0.2,0.05
 
     GodMode = vape.Categories.Blatant:CreateModule({
         Name = "GodMode",
-        Function = function(enabled)
-            if enabled then
+        Function = function(call)
+            if call then
                 task.spawn(function()
                     while GodMode.Enabled do
-                        task.wait(TimeDown.Value)
-                        if not (lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")) then
-                            continue
-                        end
+                        local root = lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")
+                        if root then
+                            local orgPos = root.Position
+                            local foundEnemy = false
 
-                        local root = lplr.Character.HumanoidRootPart
-                        local myPos = root.Position
-                        local enemyNear = false
-                        for _, player in ipairs(playersService:GetPlayers()) do
-                            if player ~= lplr and player.Team ~= lplr.Team then
-                                local char = player.Character
-                                if char then
-                                    local enemyRoot = char:FindFirstChild("HumanoidRootPart")
-                                    local enemyHum = char:FindFirstChildOfClass("Humanoid")
+                            for _, v in next, playersService:GetPlayers() do
+                                if v ~= lplr and v.Team ~= lplr.Team then
+                                    local enemyChar = v.Character
+                                    local enemyRoot = enemyChar and enemyChar:FindFirstChild("HumanoidRootPart")
+                                    local enemyHum = enemyChar and enemyChar:FindFirstChild("Humanoid")
                                     if enemyRoot and enemyHum and enemyHum.Health > 0 then
-                                        local dist = (myPos - enemyRoot.Position).Magnitude
+                                        local dist = (root.Position - enemyRoot.Position).Magnitude
                                         if dist <= Range.Value then
-                                            enemyNear = true
+                                            foundEnemy = true
                                             break
                                         end
                                     end
                                 end
                             end
-                        end
 
-                        if enemyNear then
-                            local savedPos = root.Position
-                            root.CFrame = CFrame.new(savedPos + Vector3.new(0, -230, 0))
-
-                            local start = tick()
-                            repeat
-                                task.wait()
-                                if not GodMode.Enabled or not (lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart")) then
-                                    return
+                            if foundEnemy then
+                                root.CFrame = CFrame.new(orgPos + Vector3.new(0, -230, 0))
+                                task.wait(TimeUp.Value)
+                                if GodMode.Enabled and lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart") then
+                                    lplr.Character.HumanoidRootPart.CFrame = CFrame.new(orgPos)
                                 end
-                            until tick() - start >= TimeUp.Value
-                            if lplr.Character and lplr.Character:FindFirstChild("HumanoidRootPart") then
-                                lplr.Character.HumanoidRootPart.CFrame = CFrame.new(savedPos)
                             end
                         end
+                        task.wait(Down.Value)
                     end
                 end)
             end
         end,
-        Tooltip = "Teleports you away when enemies get too close"
+        Tooltip = "Prevents you from dying"
     })
 
     Range = GodMode:CreateSlider({
@@ -28622,7 +28609,8 @@ run(function()
         Min = 0,
         Max = 50,
         Default = 15,
-        Suffix = "studs"
+				Visible = true,
+        Function = function(val) Range.Value = val end
     })
 
     TimeUp = GodMode:CreateSlider({
@@ -28630,17 +28618,17 @@ run(function()
         Min = 0,
         Max = 1,
         Default = 0.2,
-        Decimal = 10,
-        Suffix = "s"
+				Visible = true,
+        Function = function(val) TimeUp.Value = val end
     })
 
-    TimeDown = GodMode:CreateSlider({
+    Down = GodMode:CreateSlider({
         Name = "Time Down",
         Min = 0,
         Max = 1,
         Default = 0.05,
-        Decimal = 100,
-        Suffix = "s"
+				Visible = true,
+        Function = function(val) Down.Value = val end
     })
 end)
 
