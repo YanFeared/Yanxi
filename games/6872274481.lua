@@ -1,4 +1,5 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local function safeGetProto(func, index)
     if not func then return nil end
     local success, proto = pcall(debug.getconstant, func, index)
@@ -5618,9 +5619,6 @@ run(function()
     local lastSwingServerTime = 0
     local lastSwingServerTimeDelta = 0
     local SophiaCheck
-    local isFrozen = false
-    local frozenStacks = 0
-    local frozenCheckConnection
     local FROZEN_THRESHOLD = 10
     local SwingTime
     local SwingTimeSlider
@@ -5636,139 +5634,35 @@ run(function()
     local CustomHitReg
     local CustomHitRegSlider
     local lastCustomHitTime = 0
+    local AirHit
+    local AirHitsChance
+    local CanHit = true
     
     task.spawn(function()
         AttackRemote = bedwars.Client:Get(remotes.AttackEntity)
     end)
 
-    local function checkFrozenStatus()
-        if not entitylib.isAlive then
-            isFrozen = false
-            frozenStacks = 0
-            return
-        end
-        
+    local function isFrozen()
+        if not entitylib.isAlive then return false end
         local char = entitylib.character.Character
-        frozenStacks = 0
-        isFrozen = false
-        
-        local coldStacks = char:GetAttribute("ColdStacks") or char:GetAttribute("FrostStacks") or char:GetAttribute("FreezeStacks")
-        if coldStacks then
-            frozenStacks = coldStacks
-            isFrozen = frozenStacks >= FROZEN_THRESHOLD
-            return
+        if char:GetAttribute("StatusEffect_frozen") then
+            return true
         end
+        local hasIceBlock = char:FindFirstChild("IceBlock") or 
+                        char:FindFirstChild("FrozenBlock") or 
+                        char:FindFirstChild("IceShell")
         
-        local statusEffects = char:GetAttribute("StatusEffects") or {}
-        if type(statusEffects) == "table" then
-            for effectName, stackCount in pairs(statusEffects) do
-                local nameLower = tostring(effectName):lower()
-                if nameLower:find("cold") or nameLower:find("frost") or nameLower:find("freeze") then
-                    if type(stackCount) == "number" then
-                        frozenStacks = stackCount
-                        isFrozen = stackCount >= FROZEN_THRESHOLD
-                        return
-                    elseif stackCount then
-                        frozenStacks = FROZEN_THRESHOLD
-                        isFrozen = true
-                        return
-                    end
-                end
-            end
+        if hasIceBlock then
+            return true
         end
-        
-        local hasIceBlock = char:FindFirstChild("IceBlock") or char:FindFirstChild("FrozenBlock") or char:FindFirstChild("IceShell")
-        local hasFullIceParticles = 0
-        
-        for _, child in pairs(char:GetDescendants()) do
-            if child:IsA("ParticleEmitter") then
-                local nameLower = child.Name:lower()
-                if nameLower:find("ice") or nameLower:find("frost") or nameLower:find("snow") then
-                    hasFullIceParticles = hasFullIceParticles + 1
-                end
-            end
-        end
-        
-        if hasIceBlock or hasFullIceParticles >= 5 then
-            frozenStacks = FROZEN_THRESHOLD
-            isFrozen = true
-            return
-        end
-        
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            if humanoid.WalkSpeed <= 2 then
-                frozenStacks = FROZEN_THRESHOLD
-                isFrozen = true
-                return
-            elseif humanoid.WalkSpeed < 10 then
-                frozenStacks = math.floor(((16 - humanoid.WalkSpeed) / 14) * 10)
-                frozenStacks = math.clamp(frozenStacks, 1, 10)
-                isFrozen = frozenStacks >= FROZEN_THRESHOLD
-                return
-            end
-        end
-        
-        local frostEffects = 0
-        for _, child in pairs(char:GetDescendants()) do
-            if child:IsA("BasePart") then
-                if child.Material == Enum.Material.Ice or child.Material == Enum.Material.Snow then
-                    frostEffects = frostEffects + 2
-                end
-                if child.Color.r < 0.4 and child.Color.b > 0.7 then
-                    frostEffects = frostEffects + 1
-                end
-            elseif child:IsA("Decal") and (child.Texture:lower():find("ice") or child.Texture:lower():find("frost")) then
-                frostEffects = frostEffects + 3
-            end
-        end
-        
-        if frostEffects >= 8 then
-            frozenStacks = 9
-            isFrozen = false
-        elseif frostEffects >= 10 then
-            frozenStacks = FROZEN_THRESHOLD
-            isFrozen = true
-        else
-            frozenStacks = math.floor(frostEffects / 2)
-        end
-    end
-
-    local function setupStackMonitoring()
-        if not frozenCheckConnection then
-            frozenCheckConnection = runService.Heartbeat:Connect(function()
-                if not entitylib.isAlive then
-                    frozenStacks = 0
-                    isFrozen = false
-                    return
-                end
-                
-                local char = entitylib.character.Character
-                local previousStacks = frozenStacks
-                
-                local newStacks = char:GetAttribute("ColdStacks") or 
-                                 char:GetAttribute("FrostStacks") or 
-                                 char:GetAttribute("FreezeStacks") or 
-                                 char:GetAttribute("FROZEN_STACKS") or 0
-                
-                if newStacks > 0 then
-                    frozenStacks = newStacks
-                    isFrozen = frozenStacks >= FROZEN_THRESHOLD
-                    return
-                end
-                
-                checkFrozenStatus()
-            end)
-        end
+        return false
     end
 
     local function optimizeHitData(selfpos, targetpos, delta)
         local direction = (targetpos - selfpos).Unit
         local distance = (selfpos - targetpos).Magnitude
-        
         local optimizedSelfPos = selfpos
         local optimizedTargetPos = targetpos
-        
         if distance > 18 then
             optimizedSelfPos = selfpos + (direction * 2.2)
             optimizedTargetPos = targetpos - (direction * 0.5)
@@ -5780,10 +5674,8 @@ run(function()
         else
             optimizedSelfPos = selfpos + (direction * 0.6)
         end
-        
         optimizedSelfPos = optimizedSelfPos + Vector3.new(0, 0.8, 0)
         optimizedTargetPos = optimizedTargetPos + Vector3.new(0, 1.2, 0)
-        
         return optimizedSelfPos, optimizedTargetPos, direction
     end
 
@@ -5798,23 +5690,25 @@ run(function()
         return true
     end
 
-    local function canHitWithCustomReg()
-        if not CustomHitReg.Enabled then return true end
-        
-        local currentTime = tick()
-        local targetHitsIn10Sec = CustomHitRegSlider.Value
-        
-        -- hit every 10/30 = 0.3333 seconds
-        -- a tiny buffer (0.98) 
-        local delayBetweenHits = (10 / targetHitsIn10Sec) * 0.98
-        
-        if currentTime - lastCustomHitTime >= delayBetweenHits then
-            lastCustomHitTime = currentTime
-            return true
-        end
-        
-        return false
-    end
+	local function canHitWithCustomReg()
+		if not CustomHitReg.Enabled then return true end
+		
+		local currentTime = tick()
+		local targetHitsIn10Sec = CustomHitRegSlider.Value
+		
+		if targetHitsIn10Sec >= 35 and targetHitsIn10Sec <= 36 then
+			return true
+		end
+		
+		local delayBetweenHits = (10 / targetHitsIn10Sec) * 0.98
+		
+		if currentTime - lastCustomHitTime >= delayBetweenHits then
+			lastCustomHitTime = currentTime
+			return true
+		end
+		
+		return false
+	end
 
     local function FireAttackRemote(attackTable, ...)
         if not AttackRemote then return end
@@ -5898,9 +5792,7 @@ run(function()
 
     local function getAttackData()
         if SophiaCheck and SophiaCheck.Enabled then
-            checkFrozenStatus()
-            
-            if frozenStacks >= FROZEN_THRESHOLD then
+            if isFrozen() then
                 return false
             end
         end
@@ -5974,10 +5866,6 @@ run(function()
         Function = function(callback)
             
             if callback then
-                if SophiaCheck and SophiaCheck.Enabled then
-                    checkFrozenStatus()
-                    setupStackMonitoring()
-                end
                 
                 lastSwingServerTime = Workspace:GetServerTimeNow()
                 lastSwingServerTimeDelta = 0
@@ -6055,9 +5943,7 @@ run(function()
 
                 repeat
                     if SophiaCheck and SophiaCheck.Enabled then
-                        checkFrozenStatus()
-                        
-                        if isFrozen then
+                        if isFrozen() then
                             Attacking = false
                             store.KillauraTarget = nil
                             task.wait(0.3)
@@ -6132,12 +6018,6 @@ run(function()
                             end)
                         else
                             table.sort(allSwingTargets, function(a, b)
-                                if a.isPlayer ~= b.isPlayer then
-                                    return a.isPlayer
-                                end
-                                if not a.isPlayer and not b.isPlayer then
-                                    return (a.entity.RootPart.Position - selfpos).Magnitude < (b.entity.RootPart.Position - selfpos).Magnitude
-                                end
                                 return (a.entity.RootPart.Position - selfpos).Magnitude < (b.entity.RootPart.Position - selfpos).Magnitude
                             end)
                         end
@@ -6193,12 +6073,6 @@ run(function()
                             end)
                         else
                             table.sort(allAttackTargets, function(a, b)
-                                if a.isPlayer ~= b.isPlayer then
-                                    return a.isPlayer
-                                end
-                                if not a.isPlayer and not b.isPlayer then
-                                    return (a.entity.RootPart.Position - selfpos).Magnitude < (b.entity.RootPart.Position - selfpos).Magnitude
-                                end
                                 return (a.entity.RootPart.Position - selfpos).Magnitude < (b.entity.RootPart.Position - selfpos).Magnitude
                             end)
                         end
@@ -6277,17 +6151,46 @@ run(function()
                                                     bedwars.ScytheController:playLocalAnimation()
                                                 end
 
-                                                if vape.ThreadFix then
-                                                    setthreadidentity(8)
-                                                end
+												if vape.ThreadFix then
+													setthreadidentity(8)
+													task.defer(function()
+														setthreadidentity(2)
+													end)
+												end
                                             end
                                         end
                                     end
 
-                                    local canHit = delta.Magnitude <= AttackRange.Value
-                                    local extendedRangeCheck = delta.Magnitude <= (AttackRange.Value + 5) 
+									local canHit = delta.Magnitude <= AttackRange.Value
+									local extendedRangeCheck = delta.Magnitude <= (AttackRange.Value + 2) 
 
-                                    if not canHit and not extendedRangeCheck then continue end
+									if not canHit and not extendedRangeCheck then continue end
+
+                                    if AirHit.Enabled then
+                                        local chance = math.random(0, 100)
+                                        local state = v.Character.Humanoid:GetState()
+                                        if state == Enum.HumanoidStateType.Jumping then
+                                            if chance > AirHitsChance.Value then 
+                                                CanHit = false
+                                                continue
+                                            else
+                                                CanHit = true
+                                            end
+                                        elseif state == Enum.HumanoidStateType.Freefall then
+                                            if chance > AirHitsChance.Value then
+                                                CanHit = false 
+                                                continue 
+                                            else
+                                                CanHit = true
+                                            end
+                                        else
+                                            CanHit = true
+                                        end
+                                    else
+                                        CanHit = true
+                                    end
+
+                                    if not CanHit then continue end
 
                                     if SyncHits.Enabled then
                                         local swingSpeed = SwingTime.Enabled and SwingTimeSlider.Value or (meta.sword.respectAttackSpeedForEffects and meta.sword.attackSpeed or 0.42)
@@ -6371,9 +6274,12 @@ run(function()
                                             bedwars.ScytheController:playLocalAnimation()
                                         end
 
-                                        if vape.ThreadFix then
-                                            setthreadidentity(8)
-                                        end
+										if vape.ThreadFix then
+											setthreadidentity(8)
+											task.defer(function()
+												setthreadidentity(2)
+											end)
+										end
                                     end
                                 end
 
@@ -6411,12 +6317,6 @@ run(function()
                     task.wait(1 / UpdateRate.Value)
                 until not Killaura.Enabled
             else
-                if frozenCheckConnection then
-                    frozenCheckConnection:Disconnect()
-                    frozenCheckConnection = nil
-                end
-                frozenStacks = 0
-                isFrozen = false
                 
                 lastTargetTime = 0
                 continueSwingCount = 0
@@ -6434,6 +6334,9 @@ run(function()
                     end)
                 end
                 Attacking = false
+				pcall(function()
+					setthreadidentity(2)
+				end)
                 if armC0 then
                     AnimTween = tweenService:Create(gameCamera.Viewmodel.RightHand.RightWrist, TweenInfo.new(AnimationTween.Enabled and 0.001 or 0.3, Enum.EasingStyle.Exponential), {
                         C0 = armC0
@@ -6464,20 +6367,17 @@ run(function()
     
     TargetPriority = Killaura:CreateDropdown({
         Name = 'Target Priority',
-        List = {'Players First', 'NPCs First', 'Both'},
+        List = {'Players First', 'NPCs First', 'Distance'},
         Default = 'Players First',
         Tooltip = 'Choose which targets to prioritize'
     })
+    
     local methods = {'Damage', 'Distance'}
     for i in sortmethods do
         if not table.find(methods, i) then
             table.insert(methods, i)
         end
     end
-    Sort = Killaura:CreateDropdown({
-        Name = 'Target Mode',
-        List = methods
-    })
     SwingRange = Killaura:CreateSlider({
         Name = 'Swing range',
         Min = 1,
@@ -6490,10 +6390,23 @@ run(function()
     AttackRange = Killaura:CreateSlider({
         Name = 'Attack range',
         Min = 1,
-        Max = 22,
-        Default = 22, 
+        Max = 20,
+        Default = 14, 
         Suffix = function(val)
             return val == 1 and 'stud' or 'studs'
+        end
+    })
+    RangeCircle = Killaura:CreateToggle({
+        Name = "Range Visualiser",
+        Function = function(call)
+            if call then
+                createRangeCircle()
+            else
+                if RangeCirclePart then
+                    RangeCirclePart:Destroy()
+                    RangeCirclePart = nil
+                end
+            end
         end
     })
     AngleSlider = Killaura:CreateSlider({
@@ -6505,15 +6418,19 @@ run(function()
     UpdateRate = Killaura:CreateSlider({
         Name = 'Update rate',
         Min = 1,
-        Max = 120,
+        Max = 360,
         Default = 60,
         Suffix = 'hz'
     })
     MaxTargets = Killaura:CreateSlider({
         Name = 'Max targets',
         Min = 1,
-        Max = 5,
+        Max = 8,
         Default = 5
+    })
+    Sort = Killaura:CreateDropdown({
+        Name = 'Target Mode',
+        List = methods
     })
     Mouse = Killaura:CreateToggle({Name = 'Require mouse down'})
     Swing = Killaura:CreateToggle({Name = 'No Swing'})
@@ -6541,6 +6458,15 @@ run(function()
             end
         end
     })
+    ContinueSwingTime = Killaura:CreateSlider({
+        Name = 'Swing Duration',
+        Min = 0,  
+        Max = 5,  
+        Default = 1,
+        Decimal = 10,
+        Suffix = 's',
+        Visible = false
+    })
     CustomHitReg = Killaura:CreateToggle({
         Name = 'Custom Hit Reg',
         Tooltip = 'Limit how many hits per second',
@@ -6562,13 +6488,27 @@ run(function()
         Tooltip = 'Maximum hits per second',
         Visible = false
     })
-    ContinueSwingTime = Killaura:CreateSlider({
-        Name = 'Swing Duration',
-        Min = 0,  
-        Max = 5,  
-        Default = 1,
-        Decimal = 10,
-        Suffix = 's',
+    
+    AirHit = Killaura:CreateToggle({
+        Name = "Air Hits",
+        Default = true,
+        Tooltip = 'enables the air hits feature',
+        Function = function(v)
+            if AirHitsChance then
+                AirHitsChance.Object.Visible = v
+            end
+        end
+    })
+    
+    AirHitsChance = Killaura:CreateSlider({
+        Name = 'Air Hits Chance',
+        Min = 0,
+        Max = 100,
+        Default = 100,
+        Suffix = "%",
+        Decimal = 5,
+        Tooltip = 'checks if it can hit someone when they are in the air',
+        Darker = true,
         Visible = false
     })
     SyncHits = Killaura:CreateToggle({
@@ -6758,19 +6698,6 @@ run(function()
         end,
         Tooltip = 'Only attacks when the sword is held'
     })
-    RangeCircle = Killaura:CreateToggle({
-        Name = "Range Visualiser",
-        Function = function(call)
-            if call then
-                createRangeCircle()
-            else
-                if RangeCirclePart then
-                    RangeCirclePart:Destroy()
-                    RangeCirclePart = nil
-                end
-            end
-        end
-    })
     LegitAura = Killaura:CreateToggle({
         Name = 'Swing only',
         Tooltip = 'Only attacks while swinging manually'
@@ -6784,22 +6711,7 @@ run(function()
     })
     SophiaCheck = Killaura:CreateToggle({
         Name = 'Sophia Check',
-        Tooltip = 'Stops Killaura ONLY when completely frozen',
-        Function = function(callback)
-            if callback then
-                if Killaura.Enabled then
-                    setupStackMonitoring()
-                    checkFrozenStatus()
-                end
-            else
-                if frozenCheckConnection then
-                    frozenCheckConnection:Disconnect()
-                    frozenCheckConnection = nil
-                end
-                frozenStacks = 0
-                isFrozen = false
-            end
-        end,
+        Tooltip = 'Stops Killaura when frozen by Sophia',
         Default = false
     })
 end)
