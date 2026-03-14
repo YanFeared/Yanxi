@@ -18801,7 +18801,7 @@ run(function()
 	local AlertDuration
 	local ClosetDetect
 	local blacklistedclans = {'gg', 'gg2', 'DV', 'DV2'}
-	local blacklisteduserids = {1502104539, 3826146717, 4531785383, 1049767300, 4926350670, 653085195, 184655415, 2752307430, 5087196317, 5744061325, 1536265275, 9830062329}
+	local blacklisteduserids = {1502104539, 3826146717, 4531785383, 1049767300, 4926350670, 653085195, 184655415, 2752307430, 5087196317, 5744061325, 1536265275}
 	local blacklistedusernames = {
 		['phantomviperr2'] = true,
 		['gavin2015shadow'] = true,
@@ -18811,67 +18811,21 @@ run(function()
 		['dreamingnostaigia'] = true,
 		['featheredtwilight'] = true,
 		['imabot122356'] = true,
+		['hobyboynum'] = true,
 	}
-	local teamNameMap = {
-		[1] = 'Blue',
-		[2] = 'Orange',
-		[3] = 'Pink',
-		[4] = 'Yellow'
-	}
+	local teamNameMap = { [1] = 'Blue', [2] = 'Orange', [3] = 'Pink', [4] = 'Yellow' }
 	local joined = {}
 	local detectedPlayers = {}
 	local processing = {}
-	local blacklistedClansLookup = {}
-	local blacklistedUserIdsLookup = {}
-	local customUsersLookup = {}
-	local rankCache = {}
-	local RANK_CACHE_TIME = 60
 
-	local function updateBlacklistLookups()
-		table.clear(blacklistedClansLookup)
-		for _, clan in blacklistedclans do
-			blacklistedClansLookup[clan] = true
-		end
-
-		table.clear(blacklistedUserIdsLookup)
-		for _, userId in blacklisteduserids do
-			blacklistedUserIdsLookup[userId] = true
-		end
-
-		table.clear(customUsersLookup)
-		if Users and Users.ListEnabled then
-			for _, userId in Users.ListEnabled do
-				local numId = tonumber(userId)
-				if numId then
-					customUsersLookup[numId] = true
-				end
-			end
-		end
-	end
-
-	local function getRole(plr, groupId)
-		local userId = plr.UserId
-		local cacheKey = userId .. "_" .. groupId
-		local now = tick()
-
-		if rankCache[cacheKey] then
-			local cached = rankCache[cacheKey]
-			if (now - cached.time) < RANK_CACHE_TIME then
-				return cached.rank
-			end
-		end
-
+	local function getRole(plr, id)
 		local suc, res = pcall(function()
-			return plr:GetRankInGroup(groupId)
+			return plr:GetRankInGroup(id)
 		end)
-
 		if not suc then
 			notif('StaffDetector', res, 30, 'alert')
-			return 0
 		end
-
-		rankCache[cacheKey] = {rank = res, time = now}
-		return res
+		return suc and res or 0
 	end
 
 	local function staffFunction(plr, checktype)
@@ -18897,7 +18851,7 @@ run(function()
 
 		local isClanCheck = checktype:find('clan')
 		if Party.Enabled and not isClanCheck then
-			bedwars.PartyController:leaveParty()
+			pcall(bedwars.PartyController.leaveParty)
 		end
 
 		local modeValue = Mode.Value
@@ -18911,7 +18865,7 @@ run(function()
 				Duration = duration,
 			})
 		elseif modeValue == 'Requeue' then
-			pcall(function() bedwars.QueueController:leaveQueue() end)
+			pcall(bedwars.QueueController.leaveQueue)
 			bedwars.QueueController:joinQueue(store.queueType)
 		elseif modeValue == 'Profile' then
 			vape.Save = function() end
@@ -18972,127 +18926,50 @@ run(function()
 		return false
 	end
 
-	local friendCache = {}
-	local FRIEND_CACHE_TIME = 600
-
-	local function checkFriends(list)
-		for _, v in list do
-			if joined[v] then return joined[v] end
-		end
-		return nil
-	end
-
-	local function getFriendsWithTimeout(userId, timeout)
-		local now = tick()
-
-		if friendCache[userId] then
-			local cached = friendCache[userId]
-			if (now - cached.time) < FRIEND_CACHE_TIME then
-				return cached.friends
-			end
-		end
-
-		local result = nil
-		local finished = false
-
-		task.spawn(function()
-			local suc, res = pcall(function()
-				local tab = {}
-				local pages = playersService:GetFriendsAsync(userId)
-				for i = 1, 6 do
-					local currentPage = pages:GetCurrentPage()
-					for _, v in currentPage do
-						table.insert(tab, v.Id)
-					end
-					if pages.IsFinished then break end
-					if #tab > 50 then break end
-					pages:AdvanceToNextPageAsync()
-				end
-				return tab
-			end)
-			if suc then
-				result = res
-				friendCache[userId] = {friends = res, time = now}
-			end
-			finished = true
-		end)
-
-		local waited = 0
-		while not finished and waited < timeout do
-			task.wait(0.05)
-			waited = waited + 0.05
-		end
-		return result
-	end
-
-    local function checkJoin(plr, connection)
-        local hasTeam = plr:GetAttribute('Team')
-        local isSpectator = plr:GetAttribute('Spectator')
-        local isCustomMatch = bedwars.Store:getState().Game.customMatch
-
-        if not hasTeam and isSpectator and not isCustomMatch then
-            local tab = getFriendsWithTimeout(plr.UserId, 5)
-            if not tab then
-                connection:Disconnect()
-                staffFunction(plr, 'impossible_join')
-                return true
-            end
-            if #tab == 0 then
-                return false
-            end
-            local friend = checkFriends(tab)
-            if not friend then
-                connection:Disconnect()
-                staffFunction(plr, 'impossible_join')
-                return true
-            else
-                notif('StaffDetector', string.format('Spectator %s joined from %s', plr.Name, friend), 20, 'warning')
-            end
-        end
-        return false
-    end
-
 	local function playerAdded(plr)
 		joined[plr.UserId] = plr.Name
-
 		if plr == lplr then return end
 		if processing[plr.UserId] then return end
 		processing[plr.UserId] = true
-
 		if checkCloset(plr) then
 			processing[plr.UserId] = nil
 			return
 		end
-
-		if blacklistedUserIdsLookup[plr.UserId] or customUsersLookup[plr.UserId] then
+		if table.find(blacklisteduserids, plr.UserId) or (Users and table.find(Users.ListEnabled, tostring(plr.UserId))) then
 			staffFunction(plr, 'blacklisted_user')
 			processing[plr.UserId] = nil
 			return
 		end
-
 		if getRole(plr, 5774246) >= 100 then
 			staffFunction(plr, 'staff_role')
 			processing[plr.UserId] = nil
 			return
 		end
+		local function checkJoin()
+			if not plr:GetAttribute('Team') and plr:GetAttribute('Spectator') and not bedwars.Store:getState().Game.customMatch then
+				staffFunction(plr, 'impossible_join')
+				return true
+			end
+			return false
+		end
 
 		local spectatorConnection
 		spectatorConnection = plr:GetAttributeChangedSignal('Spectator'):Connect(function()
-			if checkJoin(plr, spectatorConnection) then
+			if checkJoin() then
+				spectatorConnection:Disconnect()
 				processing[plr.UserId] = nil
 			end
 		end)
 		StaffDetector:Clean(spectatorConnection)
 
-		if checkJoin(plr, spectatorConnection) then
+		if checkJoin() then
 			processing[plr.UserId] = nil
 			return
 		end
-
 		if Clans.Enabled then
 			local function checkClanTag()
 				local clanTag = plr:GetAttribute('ClanTag')
-				if clanTag and blacklistedClansLookup[clanTag] then
+				if clanTag and table.find(blacklistedclans, clanTag) then
 					staffFunction(plr, 'blacklisted_clan_' .. clanTag:lower())
 				end
 			end
@@ -19101,17 +18978,13 @@ run(function()
 				checkClanTag()
 			else
 				local clanConnection
-				local fired = false
 				clanConnection = plr:GetAttributeChangedSignal('ClanTag'):Connect(function()
-					if fired then return end
-					fired = true
 					clanConnection:Disconnect()
 					checkClanTag()
 				end)
 				StaffDetector:Clean(clanConnection)
 				task.delay(5, function()
-					if not fired then
-						fired = true
+					if clanConnection then
 						clanConnection:Disconnect()
 					end
 				end)
@@ -19125,8 +18998,6 @@ run(function()
 		local userId = plr.UserId
 		joined[userId] = nil
 		processing[userId] = nil
-		local cacheKey = userId .. "_5774246"
-		rankCache[cacheKey] = nil
 
 		if detectedPlayers[userId] then
 			local data = detectedPlayers[userId]
@@ -19143,7 +19014,6 @@ run(function()
 		Name = 'StaffDetector',
 		Function = function(callback)
 			if callback then
-				updateBlacklistLookups()
 				StaffDetector:Clean(playersService.PlayerAdded:Connect(playerAdded))
 				StaffDetector:Clean(playersService.PlayerRemoving:Connect(playerRemoving))
 				for _, v in playersService:GetPlayers() do
@@ -19153,8 +19023,6 @@ run(function()
 				table.clear(joined)
 				table.clear(processing)
 				table.clear(detectedPlayers)
-				table.clear(rankCache)
-				table.clear(friendCache)
 			end
 		end,
 		Tooltip = 'Detects people with a staff rank ingame'
@@ -19201,17 +19069,17 @@ run(function()
 		Visible = false
 	})
 
-    Users = StaffDetector:CreateTextList({
-        Name = 'Users',
-        Placeholder = 'player (userid)',
-        Function = updateBlacklistLookups
-    })
+	Users = StaffDetector:CreateTextList({
+		Name = 'Users',
+		Placeholder = 'player (userid)',
+		Function = function() end  
+	})
 
-    task.defer(function()
-        if Profile and Profile.Object then
-            Profile.Object.Visible = (Mode.Value == 'Profile')
-        end
-    end)
+	task.defer(function()
+		if Profile and Profile.Object then
+			Profile.Object.Visible = (Mode.Value == 'Profile')
+		end
+	end)
 end)
 
 run(function()
