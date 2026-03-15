@@ -567,6 +567,13 @@ run(function()
 	end
 
 	entitylib.addPlayer = function(plr)
+		if entitylib.PlayerConnections[plr] then
+			for _, conn in ipairs(entitylib.PlayerConnections[plr]) do
+				pcall(function()
+					if conn.Connected then conn:Disconnect() end
+				end)
+			end
+		end
 		if plr.Character then
 			entitylib.refreshEntity(plr.Character, plr)
 		end
@@ -1385,7 +1392,7 @@ run(function()
 					v.Jumping = false
 				end
 			end
-			task.wait(0.05)
+			task.wait(0.1)
 		end
 	end)
 	vape:Clean(function()
@@ -22124,7 +22131,6 @@ run(function()
 	
 	local function processExistingBlocks(simplify)
 		local descendants = workspace:GetDescendants()
-		local batchSize = 50
 		
 		task.spawn(function()
 			for i, obj in descendants do
@@ -22134,10 +22140,6 @@ run(function()
 					else
 						restoreBlock(obj)
 					end
-				end
-				
-				if i % batchSize == 0 then
-					task.wait()
 				end
 			end
 			
@@ -22163,8 +22165,11 @@ run(function()
 		
 		table.insert(blockMonitorConnections, mainConn)
 		
+		local lastCleanup = 0
 		local cleanupConn = runService.Heartbeat:Connect(function()
-			if tick() % 5 < 0.017 then
+			local now = tick()
+			if now - lastCleanup >= 5 then
+				lastCleanup = now
 				cleanupDeadReferences()
 			end
 		end)
@@ -35030,15 +35035,19 @@ run(function()
     end
 
 	local function destroySnowParticles()
-		task.spawn(function()  
-			for _, obj in ipairs(workspace:GetDescendants()) do
-				if obj.Name == "SnowParticlePart" or (obj:IsA("Part") and obj.Name:find("Snow")) then
-					obj:Destroy()
+			task.spawn(function()
+				local count = 0
+				for _, obj in ipairs(workspace:GetDescendants()) do
+					if obj.Name == "SnowParticlePart" or (obj:IsA("Part") and obj.Name:find("Snow")) then
+						obj:Destroy()
+					end
+					count += 1
+					if count % 50 == 0 then
+						task.wait()
+					end
 				end
-				task.wait()  
-			end
-		end)
-	end
+			end)
+		end
 
     RemoveSnow = vape.Categories.BoostFPS:CreateModule({
         Name = 'RemoveSnow',
