@@ -1,5 +1,6 @@
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 --This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
+--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.
 local mainapi = {
 	Categories = {},
 	GUIColor = {
@@ -6025,6 +6026,7 @@ function mainapi:Uninject()
 	shared.vape = nil
 	shared.vapereload = nil
 	shared.VapeIndependent = nil
+	shared.vape_running = nil -- Clear the flag
 end
 
 gui = Instance.new('ScreenGui')
